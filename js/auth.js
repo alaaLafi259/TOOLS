@@ -7,7 +7,7 @@ async function loginUser(email, password) {
   const profile = await DB.getUserProfile(cred.user.uid);
   if (!profile) throw new Error('الحساب غير مسجل في النظام، تواصل مع المشرف العام');
   if (profile.role === 'admin') {
-    window.location.href = 'admin.html';
+    window.location.href = 'dashboard.html';
   } else {
     window.location.href = `supervisor.html?site=${profile.siteId}`;
   }
