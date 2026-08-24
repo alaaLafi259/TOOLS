@@ -1,6 +1,6 @@
 // رقم إصدار النظام - يتحدث مع كل تحديث حقيقي بالكود
 // لو شفت الرقم ده اتغير بعد الرفع، يبقى التحديث وصل فعلاً
-const APP_VERSION = "2.0.0";
+const APP_VERSION = "2.1.0";
 
 document.addEventListener('DOMContentLoaded', () => {
   const badge = document.createElement('div');

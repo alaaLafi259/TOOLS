@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>لوحة المشرف العام</title>
-<link rel="stylesheet" href="css/style.css?v=2.0.0">
+<link rel="stylesheet" href="css/style.css?v=2.1.0">
 </head>
 <body>
 
@@ -86,6 +86,8 @@
         <input id="purchaseQty" type="number" placeholder="الكمية">
         <input id="purchaseCost" type="number" placeholder="تكلفة القطعة الواحدة">
         <select id="purchaseStatus"></select>
+        <select id="purchaseLocation"><option value="warehouse">المخزن المركزي</option></select>
+        <div></div>
         <label class="full"><input type="checkbox" id="purchaseIsOpening" style="width:auto; display:inline-block; margin-left:6px;"> هذه عدة قديمة موجودة بالفعل (رصيد افتتاحي وليس شراء جديد)</label>
         <textarea id="purchaseNotes" class="full" placeholder="ملاحظات (اختياري)"></textarea>
       </div>
@@ -233,12 +235,12 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script src="js/firebase-config.js?v=2.0.0"></script>
-<script src="js/version.js?v=2.0.0"></script>
-<script src="js/theme.js?v=2.0.0"></script>
-<script src="js/db.js?v=2.0.0"></script>
-<script src="js/auth.js?v=2.0.0"></script>
-<script src="js/reports.js?v=2.0.0"></script>
-<script src="js/admin.js?v=2.0.0"></script>
+<script src="js/firebase-config.js?v=2.1.0"></script>
+<script src="js/version.js?v=2.1.0"></script>
+<script src="js/theme.js?v=2.1.0"></script>
+<script src="js/db.js?v=2.1.0"></script>
+<script src="js/auth.js?v=2.1.0"></script>
+<script src="js/reports.js?v=2.1.0"></script>
+<script src="js/admin.js?v=2.1.0"></script>
 </body>
 </html>

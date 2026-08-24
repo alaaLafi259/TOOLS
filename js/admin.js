@@ -145,6 +145,7 @@ function renderSiteSelects() {
   document.getElementById('transferTo').innerHTML = siteOptions(false);
   document.getElementById('writeoffSite').innerHTML = `<option value="warehouse">المخزن المركزي</option>` + siteOptions(false);
   document.getElementById('statusChangeLocation').innerHTML = `<option value="warehouse">المخزن المركزي</option>` + siteOptions(false);
+  document.getElementById('purchaseLocation').innerHTML = `<option value="warehouse">المخزن المركزي</option>` + siteOptions(false);
 }
 
 function renderSitesList() {
@@ -236,11 +237,12 @@ async function handlePurchase() {
   const unitCost = Number(document.getElementById('purchaseCost').value);
   const isOpeningBalance = document.getElementById('purchaseIsOpening').checked;
   const status = document.getElementById('purchaseStatus').value;
+  const location = document.getElementById('purchaseLocation').value;
   const notes = document.getElementById('purchaseNotes').value.trim();
   const msg = document.getElementById('purchaseMsg');
   if (!categoryCode || !qty || qty <= 0) { msg.innerHTML = '<div class="error-msg">تأكد من الصنف والكمية</div>'; return; }
   try {
-    await DB.recordPurchase({ categoryCode, qty, unitCost: unitCost || 0, isOpeningBalance, notes, status, createdBy: currentUser.id });
+    await DB.recordPurchase({ categoryCode, qty, unitCost: unitCost || 0, isOpeningBalance, notes, status, location, createdBy: currentUser.id });
     msg.innerHTML = '<div class="success-msg">تم التسجيل بنجاح</div>';
     document.getElementById('purchaseQty').value = '';
     document.getElementById('purchaseCost').value = '';

@@ -1,6 +1,11 @@
 // ============================================
 // طبقة الوصول للبيانات (Data Layer)
 // كل التعامل مع Firestore يمر من هنا فقط
+//
+// ملاحظة مهمة: كل دالة حركة هنا تلتزم بقاعدة Firestore الصارمة:
+// "كل عمليات القراءة (get) لازم تحصل قبل أي عملية كتابة (set/update)"
+// لذلك كل دالة مقسّمة صراحة لمرحلتين: قراءة كل المستندات المطلوبة أولاً،
+// ثم حساب القيم الجديدة، ثم كتابة كل التحديثات دفعة واحدة.
 // ============================================
 
 const STATUS_KEYS = ['working', 'damaged', 'maintenance', 'outOfService'];
@@ -16,10 +21,6 @@ const STATUS_FIELD_ON_CATEGORY = {
   maintenance: 'stockMaintenance',
   outOfService: 'stockOutOfService'
 };
-
-function emptyStatusMap() {
-  return { working: 0, damaged: 0, maintenance: 0, outOfService: 0 };
-}
 
 function sumStatusMap(map) {
   return STATUS_KEYS.reduce((s, k) => s + (map[k] || 0), 0);
@@ -65,13 +66,10 @@ const DB = {
     });
   },
 
-  // تعديل اسم/وحدة الصنف (الكود لا يمكن تعديله لأنه معرف المستند)
   async updateCategory(code, { name, unit }) {
     await db.collection('categories').doc(code).update({ name, unit });
   },
 
-  // حذف صنف نهائيًا - يُستخدم فقط لتصحيح خطأ إدخال، والتحقق من عدم وجود رصيد
-  // أو حركات يتم في واجهة الأدمن قبل النداء على هذه الدالة
   async deleteCategory(code) {
     await db.collection('categories').doc(code).delete();
   },
@@ -91,7 +89,6 @@ const DB = {
     return ref.id;
   },
 
-  // يرجع رصيد الموقع كقائمة { categoryCode, working, damaged, maintenance, outOfService, total }
   async getSiteStock(siteId) {
     const snap = await db.collection('sites').doc(siteId).collection('stock').get();
     return snap.docs.map(d => {
@@ -106,82 +103,85 @@ const DB = {
     });
   },
 
-  // ---------- منطق تحديث الأرصدة (يُستخدم داخل transactions فقط) ----------
   _siteStockRef(siteId, categoryCode) {
     return db.collection('sites').doc(siteId).collection('stock').doc(categoryCode);
-  },
-
-  async _adjustSiteStatusQty(t, siteId, categoryCode, status, delta) {
-    const ref = this._siteStockRef(siteId, categoryCode);
-    const snap = await t.get(ref);
-    const current = snap.exists ? (snap.data()[status] || 0) : 0;
-    const next = current + delta;
-    if (next < 0) throw new Error(`الرصيد غير كافٍ (${STATUS_LABELS[status]}) في الموقع للصنف ${categoryCode}`);
-    t.set(ref, { [status]: next }, { merge: true });
-  },
-
-  async _adjustWarehouseStatusQty(t, catRef, catData, status, delta) {
-    const field = STATUS_FIELD_ON_CATEGORY[status];
-    const current = catData[field] || 0;
-    const next = current + delta;
-    if (next < 0) throw new Error(`الرصيد غير كافٍ (${STATUS_LABELS[status]}) بالمخزن المركزي`);
-    t.update(catRef, { [field]: next });
-    return next;
   },
 
   // ============================================
   // الحركات (transactions)
   // ============================================
 
-  // شراء جديد / رصيد افتتاحي -> يزيد رصيد المخزن المركزي بحالة معينة (افتراضي: تعمل)
-  async recordPurchase({ categoryCode, qty, unitCost, isOpeningBalance, notes, createdBy, status }) {
+  // شراء جديد / رصيد افتتاحي -> ممكن يبدأ في المخزن المركزي أو في موقع مباشرة
+  async recordPurchase({ categoryCode, qty, unitCost, isOpeningBalance, notes, createdBy, status, location }) {
     status = status || 'working';
+    location = location || 'warehouse';
+    const isWarehouse = location === 'warehouse';
     const catRef = db.collection('categories').doc(categoryCode);
+    const siteRef = isWarehouse ? null : this._siteStockRef(location, categoryCode);
     const txRef = db.collection('transactions').doc();
 
     await db.runTransaction(async (t) => {
+      // ---- قراءة ----
       const catSnap = await t.get(catRef);
       if (!catSnap.exists) throw new Error('الصنف غير موجود');
       const cat = catSnap.data();
+      let siteSnap = null;
+      if (siteRef) siteSnap = await t.get(siteRef);
 
-      const oldTotalQty = STATUS_KEYS.reduce((s, k) => s + (cat[STATUS_FIELD_ON_CATEGORY[k]] || 0), 0);
-      const oldAvgCost = cat.avgCost || 0;
-      const newTotalQty = oldTotalQty + qty;
-      const newAvgCost = newTotalQty > 0
-        ? ((oldTotalQty * oldAvgCost) + (qty * unitCost)) / newTotalQty
-        : unitCost;
+      // ---- حساب ----
+      const oldQtyEver = cat.totalQtyPurchasedEver || 0;
+      const oldCostEver = cat.totalCostPurchasedEver || 0;
+      const newQtyEver = oldQtyEver + qty;
+      const newCostEver = oldCostEver + (qty * unitCost);
+      const newAvgCost = newQtyEver > 0 ? newCostEver / newQtyEver : unitCost;
 
-      const field = STATUS_FIELD_ON_CATEGORY[status];
-      t.update(catRef, {
-        [field]: (cat[field] || 0) + qty,
+      const catUpdate = {
         avgCost: newAvgCost,
-        totalQtyPurchasedEver: (cat.totalQtyPurchasedEver || 0) + qty,
-        totalCostPurchasedEver: (cat.totalCostPurchasedEver || 0) + (qty * unitCost)
-      });
+        totalQtyPurchasedEver: newQtyEver,
+        totalCostPurchasedEver: newCostEver
+      };
+      if (isWarehouse) {
+        const field = STATUS_FIELD_ON_CATEGORY[status];
+        catUpdate[field] = (cat[field] || 0) + qty;
+      }
+
+      // ---- كتابة ----
+      t.update(catRef, catUpdate);
+      if (siteRef) {
+        const current = siteSnap.exists ? (siteSnap.data()[status] || 0) : 0;
+        t.set(siteRef, { [status]: current + qty }, { merge: true });
+      }
 
       t.set(txRef, {
         type: isOpeningBalance ? 'opening' : 'purchase',
         categoryCode, qty, unitCost, totalCost: qty * unitCost, status,
-        fromSite: null, toSite: 'warehouse',
+        fromSite: null, toSite: location,
         notes: notes || '', createdBy,
         date: firebase.firestore.FieldValue.serverTimestamp()
       });
     });
   },
 
-  // صرف من المخزن المركزي لموقع (بحالة معينة)
+  // صرف من المخزن المركزي لموقع
   async recordIssue({ categoryCode, qty, siteId, notes, createdBy, status }) {
     status = status || 'working';
     const catRef = db.collection('categories').doc(categoryCode);
+    const siteRef = this._siteStockRef(siteId, categoryCode);
     const txRef = db.collection('transactions').doc();
 
     await db.runTransaction(async (t) => {
       const catSnap = await t.get(catRef);
       if (!catSnap.exists) throw new Error('الصنف غير موجود');
       const cat = catSnap.data();
+      const siteSnap = await t.get(siteRef);
 
-      await this._adjustWarehouseStatusQty(t, catRef, cat, status, -qty);
-      await this._adjustSiteStatusQty(t, siteId, categoryCode, status, qty);
+      const field = STATUS_FIELD_ON_CATEGORY[status];
+      const warehouseCurrent = cat[field] || 0;
+      if (warehouseCurrent < qty) throw new Error(`الرصيد غير كافٍ (${STATUS_LABELS[status]}) بالمخزن المركزي`);
+      const siteCurrent = siteSnap.exists ? (siteSnap.data()[status] || 0) : 0;
+
+      t.update(catRef, { [field]: warehouseCurrent - qty });
+      t.set(siteRef, { [status]: siteCurrent + qty }, { merge: true });
 
       t.set(txRef, {
         type: 'issue', categoryCode, qty, status,
@@ -193,19 +193,26 @@ const DB = {
     });
   },
 
-  // إرجاع من موقع للمخزن المركزي (بحالة معينة)
+  // إرجاع من موقع للمخزن المركزي
   async recordReturn({ categoryCode, qty, siteId, notes, createdBy, status }) {
     status = status || 'working';
     const catRef = db.collection('categories').doc(categoryCode);
+    const siteRef = this._siteStockRef(siteId, categoryCode);
     const txRef = db.collection('transactions').doc();
 
     await db.runTransaction(async (t) => {
       const catSnap = await t.get(catRef);
       if (!catSnap.exists) throw new Error('الصنف غير موجود');
       const cat = catSnap.data();
+      const siteSnap = await t.get(siteRef);
 
-      await this._adjustSiteStatusQty(t, siteId, categoryCode, status, -qty);
-      await this._adjustWarehouseStatusQty(t, catRef, cat, status, qty);
+      const siteCurrent = siteSnap.exists ? (siteSnap.data()[status] || 0) : 0;
+      if (siteCurrent < qty) throw new Error(`الرصيد غير كافٍ (${STATUS_LABELS[status]}) في الموقع`);
+      const field = STATUS_FIELD_ON_CATEGORY[status];
+      const warehouseCurrent = cat[field] || 0;
+
+      t.set(siteRef, { [status]: siteCurrent - qty }, { merge: true });
+      t.update(catRef, { [field]: warehouseCurrent + qty });
 
       t.set(txRef, {
         type: 'return', categoryCode, qty, status,
@@ -217,19 +224,27 @@ const DB = {
     });
   },
 
-  // تحويل مباشر بين موقعين (بحالة معينة)
+  // تحويل مباشر بين موقعين
   async recordTransfer({ categoryCode, qty, fromSiteId, toSiteId, notes, createdBy, status }) {
     status = status || 'working';
     const catRef = db.collection('categories').doc(categoryCode);
+    const fromRef = this._siteStockRef(fromSiteId, categoryCode);
+    const toRef = this._siteStockRef(toSiteId, categoryCode);
     const txRef = db.collection('transactions').doc();
 
     await db.runTransaction(async (t) => {
       const catSnap = await t.get(catRef);
       if (!catSnap.exists) throw new Error('الصنف غير موجود');
       const cat = catSnap.data();
+      const fromSnap = await t.get(fromRef);
+      const toSnap = await t.get(toRef);
 
-      await this._adjustSiteStatusQty(t, fromSiteId, categoryCode, status, -qty);
-      await this._adjustSiteStatusQty(t, toSiteId, categoryCode, status, qty);
+      const fromCurrent = fromSnap.exists ? (fromSnap.data()[status] || 0) : 0;
+      if (fromCurrent < qty) throw new Error(`الرصيد غير كافٍ (${STATUS_LABELS[status]}) في الموقع المرسل`);
+      const toCurrent = toSnap.exists ? (toSnap.data()[status] || 0) : 0;
+
+      t.set(fromRef, { [status]: fromCurrent - qty }, { merge: true });
+      t.set(toRef, { [status]: toCurrent + qty }, { merge: true });
 
       t.set(txRef, {
         type: 'transfer', categoryCode, qty, status,
@@ -241,21 +256,30 @@ const DB = {
     });
   },
 
-  // إتلاف / فقد (بحالة معينة - غالبًا تالفة أو معطلة)
+  // إتلاف / فقد
   async recordWriteoff({ categoryCode, qty, siteId, reason, notes, createdBy, status }) {
     status = status || 'damaged';
+    const isWarehouse = siteId === 'warehouse';
     const catRef = db.collection('categories').doc(categoryCode);
+    const siteRef = isWarehouse ? null : this._siteStockRef(siteId, categoryCode);
     const txRef = db.collection('transactions').doc();
 
     await db.runTransaction(async (t) => {
       const catSnap = await t.get(catRef);
       if (!catSnap.exists) throw new Error('الصنف غير موجود');
       const cat = catSnap.data();
+      let siteSnap = null;
+      if (siteRef) siteSnap = await t.get(siteRef);
 
-      if (siteId === 'warehouse') {
-        await this._adjustWarehouseStatusQty(t, catRef, cat, status, -qty);
+      if (isWarehouse) {
+        const field = STATUS_FIELD_ON_CATEGORY[status];
+        const current = cat[field] || 0;
+        if (current < qty) throw new Error(`الرصيد غير كافٍ (${STATUS_LABELS[status]}) بالمخزن المركزي`);
+        t.update(catRef, { [field]: current - qty });
       } else {
-        await this._adjustSiteStatusQty(t, siteId, categoryCode, status, -qty);
+        const current = siteSnap.exists ? (siteSnap.data()[status] || 0) : 0;
+        if (current < qty) throw new Error(`الرصيد غير كافٍ (${STATUS_LABELS[status]}) في الموقع`);
+        t.set(siteRef, { [status]: current - qty }, { merge: true });
       }
 
       t.set(txRef, {
@@ -268,31 +292,44 @@ const DB = {
     });
   },
 
-  // تغيير حالة قطع موجودة في نفس المكان (مثلاً: تعمل -> تالفة، أو تحت الصيانة -> تعمل)
-  // location: 'warehouse' أو معرف موقع
+  // تغيير حالة قطع موجودة في نفس المكان
   async recordStatusChange({ categoryCode, qty, location, fromStatus, toStatus, notes, createdBy }) {
     if (fromStatus === toStatus) throw new Error('اختر حالتين مختلفتين');
+    const isWarehouse = location === 'warehouse';
     const catRef = db.collection('categories').doc(categoryCode);
+    const siteRef = isWarehouse ? null : this._siteStockRef(location, categoryCode);
     const txRef = db.collection('transactions').doc();
 
     await db.runTransaction(async (t) => {
-      const catSnap = await t.get(catRef);
-      if (!catSnap.exists) throw new Error('الصنف غير موجود');
-      const cat = catSnap.data();
-
-      if (location === 'warehouse') {
-        await this._adjustWarehouseStatusQty(t, catRef, cat, fromStatus, -qty);
-        await this._adjustWarehouseStatusQty(t, catRef, cat, toStatus, qty);
+      let catSnap = null, siteSnap = null;
+      if (isWarehouse) {
+        catSnap = await t.get(catRef);
+        if (!catSnap.exists) throw new Error('الصنف غير موجود');
       } else {
-        await this._adjustSiteStatusQty(t, location, categoryCode, fromStatus, -qty);
-        await this._adjustSiteStatusQty(t, location, categoryCode, toStatus, qty);
+        siteSnap = await t.get(siteRef);
+      }
+
+      if (isWarehouse) {
+        const cat = catSnap.data();
+        const fromField = STATUS_FIELD_ON_CATEGORY[fromStatus];
+        const toField = STATUS_FIELD_ON_CATEGORY[toStatus];
+        const fromCurrent = cat[fromField] || 0;
+        if (fromCurrent < qty) throw new Error(`الرصيد غير كافٍ (${STATUS_LABELS[fromStatus]}) بالمخزن المركزي`);
+        const toCurrent = cat[toField] || 0;
+        t.update(catRef, { [fromField]: fromCurrent - qty, [toField]: toCurrent + qty });
+      } else {
+        const data = siteSnap.exists ? siteSnap.data() : {};
+        const fromCurrent = data[fromStatus] || 0;
+        if (fromCurrent < qty) throw new Error(`الرصيد غير كافٍ (${STATUS_LABELS[fromStatus]}) في الموقع`);
+        const toCurrent = data[toStatus] || 0;
+        t.set(siteRef, { [fromStatus]: fromCurrent - qty, [toStatus]: toCurrent + qty }, { merge: true });
       }
 
       t.set(txRef, {
         type: 'status_change', categoryCode, qty,
         fromStatus, toStatus, location,
-        fromSite: location === 'warehouse' ? 'warehouse' : location,
-        toSite: location === 'warehouse' ? 'warehouse' : location,
+        fromSite: isWarehouse ? 'warehouse' : location,
+        toSite: isWarehouse ? 'warehouse' : location,
         notes: notes || '', createdBy,
         date: firebase.firestore.FieldValue.serverTimestamp()
       });
