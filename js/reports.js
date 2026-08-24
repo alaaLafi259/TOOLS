@@ -1,5 +1,5 @@
 // ============================================
-// تقارير التكاليف
+// تقارير التكاليف والحالة
 // ============================================
 
 const Reports = {
@@ -44,7 +44,7 @@ const Reports = {
       const stock = await DB.getSiteStock(site.id);
       const value = stock.reduce((sum, s) => {
         const cat = categories.find(c => c.code === s.categoryCode);
-        return sum + (s.qty || 0) * (cat ? cat.avgCost || 0 : 0);
+        return sum + (s.total || 0) * (cat ? cat.avgCost || 0 : 0);
       }, 0);
       rows.push({ siteName: site.name, value });
     }
@@ -56,13 +56,13 @@ const Reports = {
       <tbody>${rows.map(r => `<tr><td>${r.siteName}</td><td>${r.value.toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="2">لا توجد مواقع</td></tr>'}</tbody></table>`;
   },
 
-  // مصفوفة: كل صنف × كل موقع (والمخزن المركزي) وكميته هناك + الإجمالي الكلي للصنف
+  // مصفوفة: كل صنف × كل موقع (والمخزن المركزي) - الإجمالي بغض النظر عن الحالة
   async getStockMatrix(sites, categories) {
-    const siteStocks = {}; // siteId -> {categoryCode: qty}
+    const siteStocks = {};
     for (const site of sites) {
       const stock = await DB.getSiteStock(site.id);
       siteStocks[site.id] = {};
-      stock.forEach(s => siteStocks[site.id][s.categoryCode] = s.qty || 0);
+      stock.forEach(s => siteStocks[site.id][s.categoryCode] = s.total || 0);
     }
     return categories.map(cat => {
       const perSite = sites.map(site => siteStocks[site.id][cat.code] || 0);
@@ -89,6 +89,65 @@ const Reports = {
       <tbody>${rows || `<tr><td colspan="${sites.length + 3}">لا توجد بيانات</td></tr>`}</tbody></table>`;
   },
 
+  // ---------- تقرير الحالة (تعمل / تالفة / تحت الصيانة / معطلة) ----------
+
+  // إجمالي كل حالة على مستوى الشركة كلها (مخزن + كل المواقع)
+  async getStatusSummary(sites, categories) {
+    const totals = { working: 0, damaged: 0, maintenance: 0, outOfService: 0 };
+    categories.forEach(c => {
+      DB.STATUS_KEYS.forEach(k => totals[k] += (c.warehouseStock ? c.warehouseStock[k] : 0) || 0);
+    });
+    for (const site of sites) {
+      const stock = await DB.getSiteStock(site.id);
+      stock.forEach(s => DB.STATUS_KEYS.forEach(k => totals[k] += s[k] || 0));
+    }
+    return totals;
+  },
+
+  renderStatusSummaryHtml(totals) {
+    return `<div class="stat-row">
+      ${DB.STATUS_KEYS.map(k => `<div class="stat-box"><div class="value">${totals[k]}</div><div class="label">${DB.STATUS_LABELS[k]}</div></div>`).join('')}
+    </div>`;
+  },
+
+  // تفصيل كل صنف في كل مكان (مخزن أو موقع) مع تقسيم الحالات - جدول مفصّل
+  async getStatusDetailRows(sites, categories) {
+    const rows = [];
+    categories.forEach(cat => {
+      const ws = cat.warehouseStock || emptyStatusMapLocal();
+      if (sumValues(ws) > 0) {
+        rows.push({ location: 'المخزن المركزي', code: cat.code, name: cat.name, ...ws });
+      }
+    });
+    for (const site of sites) {
+      const stock = await DB.getSiteStock(site.id);
+      stock.forEach(s => {
+        if (s.total > 0) {
+          const cat = categories.find(c => c.code === s.categoryCode);
+          rows.push({
+            location: site.name, code: s.categoryCode, name: cat ? cat.name : s.categoryCode,
+            working: s.working, damaged: s.damaged, maintenance: s.maintenance, outOfService: s.outOfService
+          });
+        }
+      });
+    }
+    return rows;
+  },
+
+  renderStatusDetailHtml(rows) {
+    const body = rows.map(r => `
+      <tr>
+        <td>${r.location}</td>
+        <td>${r.code} - ${r.name}</td>
+        <td>${r.working}</td>
+        <td>${r.damaged}</td>
+        <td>${r.maintenance}</td>
+        <td>${r.outOfService}</td>
+      </tr>`).join('');
+    return `<table><thead><tr><th>المكان</th><th>الصنف</th><th>تعمل</th><th>تالفة</th><th>تحت الصيانة</th><th>معطلة</th></tr></thead>
+      <tbody>${body || '<tr><td colspan="6">لا توجد بيانات</td></tr>'}</tbody></table>`;
+  },
+
   // تقرير الإتلاف والفقد الإجمالي (كمية وقيمة، لكل صنف)
   async getWriteoffReport() {
     const txs = await DB.getAllTransactions(1000);
@@ -111,24 +170,28 @@ const Reports = {
       <tbody>${rows || '<tr><td colspan="3">لا توجد حالات إتلاف/فقد</td></tr>'}</tbody></table>`;
   },
 
-  // تقرير حركات صنف معين عبر كل المواقع (لمعرفة تاريخ تحرك صنف بعينه)
+  // تقرير حركات صنف معين عبر كل المواقع
   async getCategoryHistory(categoryCode) {
     const txs = await DB.getAllTransactions(1000);
     return txs.filter(t => t.categoryCode === categoryCode);
   },
 
   renderCategoryHistoryHtml(txs, sitesCache) {
-    const typeLabels = { purchase: 'شراء', opening: 'رصيد افتتاحي', issue: 'صرف', return: 'إرجاع', transfer: 'تحويل', writeoff: 'إتلاف/فقد' };
+    const typeLabels = { purchase: 'شراء', opening: 'رصيد افتتاحي', issue: 'صرف', return: 'إرجاع', transfer: 'تحويل', writeoff: 'إتلاف/فقد', status_change: 'تغيير حالة' };
     const siteName = (id) => id === 'warehouse' ? 'المخزن المركزي' : (sitesCache.find(s => s.id === id)?.name || id || '-');
     const rows = txs.map(tx => `
       <tr>
         <td>${tx.date ? new Date(tx.date.seconds * 1000).toLocaleString('ar-EG') : '-'}</td>
         <td><span class="badge ${tx.type}">${typeLabels[tx.type] || tx.type}</span></td>
         <td>${tx.qty}</td>
+        <td>${tx.type === 'status_change' ? (DB.STATUS_LABELS[tx.fromStatus] + ' ← ' + DB.STATUS_LABELS[tx.toStatus]) : (DB.STATUS_LABELS[tx.status] || '-')}</td>
         <td>${siteName(tx.fromSite)}</td>
         <td>${siteName(tx.toSite)}</td>
       </tr>`).join('');
-    return `<table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>من</th><th>إلى</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="5">لا توجد حركات لهذا الصنف</td></tr>'}</tbody></table>`;
+    return `<table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>الحالة</th><th>من</th><th>إلى</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6">لا توجد حركات لهذا الصنف</td></tr>'}</tbody></table>`;
   }
 };
+
+function emptyStatusMapLocal() { return { working: 0, damaged: 0, maintenance: 0, outOfService: 0 }; }
+function sumValues(obj) { return Object.values(obj).reduce((a, b) => a + b, 0); }

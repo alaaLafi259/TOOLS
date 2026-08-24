@@ -40,9 +40,9 @@
       <div id="catMsg"></div>
     </div>
     <div class="card">
-      <h2>الأصناف المسجلة</h2>
+      <h2>الأصناف المسجلة (رصيد المخزن المركزي حسب الحالة)</h2>
       <table>
-        <thead><tr><th>الكود</th><th>الاسم</th><th>رصيد المخزن المركزي</th><th>متوسط التكلفة</th></tr></thead>
+        <thead><tr><th>الكود</th><th>الاسم</th><th>تعمل</th><th>تالفة</th><th>تحت الصيانة</th><th>معطلة</th><th>الإجمالي</th><th>متوسط التكلفة</th></tr></thead>
         <tbody id="categoriesTable"></tbody>
       </table>
     </div>
@@ -74,6 +74,7 @@
         <select id="purchaseCategory"></select>
         <input id="purchaseQty" type="number" placeholder="الكمية">
         <input id="purchaseCost" type="number" placeholder="تكلفة القطعة الواحدة">
+        <select id="purchaseStatus"></select>
         <label class="full"><input type="checkbox" id="purchaseIsOpening" style="width:auto; display:inline-block; margin-left:6px;"> هذه عدة قديمة موجودة بالفعل (رصيد افتتاحي وليس شراء جديد)</label>
         <textarea id="purchaseNotes" class="full" placeholder="ملاحظات (اختياري)"></textarea>
       </div>
@@ -90,7 +91,8 @@
         <select id="issueCategory"></select>
         <input id="issueQty" type="number" placeholder="الكمية">
         <select id="issueSite"></select>
-        <input id="issueNotes" placeholder="ملاحظات">
+        <select id="issueStatus"></select>
+        <input id="issueNotes" class="full" placeholder="ملاحظات">
       </div>
       <button onclick="handleIssue()">صرف</button>
     </div>
@@ -100,7 +102,8 @@
         <select id="returnCategory"></select>
         <input id="returnQty" type="number" placeholder="الكمية">
         <select id="returnSite"></select>
-        <input id="returnNotes" placeholder="ملاحظات">
+        <select id="returnStatus"></select>
+        <input id="returnNotes" class="full" placeholder="ملاحظات">
       </div>
       <button onclick="handleReturn()">إرجاع</button>
     </div>
@@ -111,6 +114,7 @@
         <input id="transferQty" type="number" placeholder="الكمية">
         <select id="transferFrom"></select>
         <select id="transferTo"></select>
+        <select id="transferStatus"></select>
       </div>
       <button onclick="handleTransfer()">تحويل</button>
     </div>
@@ -120,12 +124,26 @@
         <select id="writeoffCategory"></select>
         <input id="writeoffQty" type="number" placeholder="الكمية">
         <select id="writeoffSite"><option value="warehouse">المخزن المركزي</option></select>
+        <select id="writeoffStatus"></select>
         <select id="writeoffReason">
           <option value="تلف">تلف</option>
           <option value="فقد">فقد</option>
         </select>
       </div>
       <button onclick="handleWriteoff()" class="danger">تسجيل الإتلاف/الفقد</button>
+    </div>
+    <div class="card">
+      <h2>تغيير حالة عدة (مثال: من "تعمل" إلى "تالفة"، أو من "تحت الصيانة" إلى "تعمل")</h2>
+      <div class="form-grid">
+        <select id="statusChangeCategory"></select>
+        <input id="statusChangeQty" type="number" placeholder="الكمية">
+        <select id="statusChangeLocation"><option value="warehouse">المخزن المركزي</option></select>
+        <div></div>
+        <select id="statusChangeFrom"></select>
+        <select id="statusChangeTo"></select>
+        <input id="statusChangeNotes" class="full" placeholder="ملاحظات (اختياري)">
+      </div>
+      <button onclick="handleStatusChange()">تسجيل تغيير الحالة</button>
     </div>
   </div>
 
@@ -144,15 +162,33 @@
       <div id="aggregateReport"></div>
     </div>
     <div class="card">
-      <h2>قيمة العدة لكل موقع</h2>
+      <h2>قيمة العدة لكل موقع
+        <button class="print-btn" onclick="printReport('تقرير قيمة العدة لكل موقع', 'siteCostReport')">تصدير PDF</button>
+      </h2>
       <div id="siteCostReport"></div>
     </div>
     <div class="card">
-      <h2>مصفوفة توزيع العدة (كل صنف × كل موقع)</h2>
+      <h2>ملخص الحالات على مستوى الشركة (مخزن + كل المواقع)
+        <button class="print-btn" onclick="printReport('ملخص حالة العدة', 'statusSummaryReport')">تصدير PDF</button>
+      </h2>
+      <div id="statusSummaryReport"></div>
+    </div>
+    <div class="card">
+      <h2>تفصيل الحالة لكل صنف في كل مكان
+        <button class="print-btn" onclick="printReport('تفصيل حالة العدة', 'statusDetailReport')">تصدير PDF</button>
+      </h2>
+      <div id="statusDetailReport" style="overflow-x:auto;"></div>
+    </div>
+    <div class="card">
+      <h2>مصفوفة توزيع العدة (كل صنف × كل موقع)
+        <button class="print-btn" onclick="printReport('تقرير توزيع العدة على المواقع', 'stockMatrixReport')">تصدير PDF</button>
+      </h2>
       <div id="stockMatrixReport" style="overflow-x:auto;"></div>
     </div>
     <div class="card">
-      <h2>تقرير الإتلاف والفقد</h2>
+      <h2>تقرير الإتلاف والفقد
+        <button class="print-btn" onclick="printReport('تقرير الإتلاف والفقد', 'writeoffReport')">تصدير PDF</button>
+      </h2>
       <div id="writeoffReport"></div>
     </div>
     <div class="card">
@@ -178,6 +214,8 @@
   </div>
 
 </div>
+
+<div id="printSection"></div>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>

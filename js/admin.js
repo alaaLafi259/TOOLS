@@ -5,6 +5,8 @@
 let currentUser = null;
 let categoriesCache = [];
 let sitesCache = [];
+let siteStockCache = {};   // siteId -> [{categoryCode, qty}]
+let siteTotalsCache = {};  // siteId -> total qty across all categories
 
 requireRole('admin', async (profile) => {
   currentUser = profile;
@@ -24,29 +26,52 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 async function refreshAll() {
   categoriesCache = await DB.getAllCategories();
   sitesCache = await DB.getAllSites();
+
+  siteStockCache = {};
+  siteTotalsCache = {};
+  for (const site of sitesCache) {
+    const stock = await DB.getSiteStock(site.id);
+    siteStockCache[site.id] = stock;
+    siteTotalsCache[site.id] = stock.reduce((s, r) => s + (r.total || 0), 0);
+  }
+
   renderStats();
   renderCategoriesTable();
   renderCategorySelects();
-  await renderSitesList();
+  renderSitesList();
   renderSiteSelects();
   await renderLog();
 }
 
 function renderStats() {
-  const totalItems = categoriesCache.reduce((s, c) => s + (c.totalQtyWarehouse || 0), 0);
-  const totalValue = categoriesCache.reduce((s, c) => s + (c.totalQtyWarehouse || 0) * (c.avgCost || 0), 0);
+  const warehouseTotal = categoriesCache.reduce((s, c) => s + (c.totalQtyWarehouse || 0), 0);
+  const warehouseValue = categoriesCache.reduce((s, c) => s + (c.totalQtyWarehouse || 0) * (c.avgCost || 0), 0);
+  const sitesTotal = sitesCache.reduce((s, site) => s + (siteTotalsCache[site.id] || 0), 0);
+  const grandTotal = warehouseTotal + sitesTotal;
   document.getElementById('statsRow').innerHTML = `
+    <div class="stat-box"><div class="value">${grandTotal}</div><div class="label">إجمالي القطع في كل مكان (مخزن + مواقع)</div></div>
+    <div class="stat-box"><div class="value">${warehouseTotal}</div><div class="label">قطع المخزن المركزي</div></div>
+    <div class="stat-box"><div class="value">${sitesTotal}</div><div class="label">قطع موزعة على المواقع</div></div>
     <div class="stat-box"><div class="value">${categoriesCache.length}</div><div class="label">عدد الأصناف</div></div>
     <div class="stat-box"><div class="value">${sitesCache.length}</div><div class="label">عدد المواقع</div></div>
-    <div class="stat-box"><div class="value">${totalItems}</div><div class="label">إجمالي قطع المخزن المركزي</div></div>
-    <div class="stat-box"><div class="value">${totalValue.toLocaleString()}</div><div class="label">قيمة المخزن المركزي</div></div>
+    <div class="stat-box"><div class="value">${warehouseValue.toLocaleString()}</div><div class="label">قيمة المخزن المركزي</div></div>
   `;
 }
 
 function renderCategoriesTable() {
-  document.getElementById('categoriesTable').innerHTML = categoriesCache.map(c => `
-    <tr><td>${c.code}</td><td>${c.name}</td><td>${c.totalQtyWarehouse || 0}</td><td>${(c.avgCost || 0).toFixed(2)}</td></tr>
-  `).join('');
+  document.getElementById('categoriesTable').innerHTML = categoriesCache.map(c => {
+    const ws = c.warehouseStock || { working: 0, damaged: 0, maintenance: 0, outOfService: 0 };
+    return `<tr>
+      <td>${c.code}</td><td>${c.name}</td>
+      <td>${ws.working}</td><td>${ws.damaged}</td><td>${ws.maintenance}</td><td>${ws.outOfService}</td>
+      <td><strong>${c.totalQtyWarehouse || 0}</strong></td>
+      <td>${(c.avgCost || 0).toFixed(2)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function statusOptions() {
+  return DB.STATUS_KEYS.map(k => `<option value="${k}">${DB.STATUS_LABELS[k]}</option>`).join('');
 }
 
 function categoryOptions() {
@@ -54,9 +79,14 @@ function categoryOptions() {
 }
 
 function renderCategorySelects() {
-  ['purchaseCategory', 'issueCategory', 'returnCategory', 'transferCategory', 'writeoffCategory'].forEach(id => {
+  ['purchaseCategory', 'issueCategory', 'returnCategory', 'transferCategory', 'writeoffCategory', 'statusChangeCategory'].forEach(id => {
     document.getElementById(id).innerHTML = categoryOptions();
   });
+  ['purchaseStatus', 'issueStatus', 'returnStatus', 'transferStatus', 'writeoffStatus', 'statusChangeFrom', 'statusChangeTo'].forEach(id => {
+    document.getElementById(id).innerHTML = statusOptions();
+  });
+  document.getElementById('writeoffStatus').value = 'damaged';
+  document.getElementById('statusChangeTo').value = 'damaged';
 }
 
 function siteOptions(includeWarehouse) {
@@ -71,25 +101,30 @@ function renderSiteSelects() {
   document.getElementById('transferFrom').innerHTML = siteOptions(false);
   document.getElementById('transferTo').innerHTML = siteOptions(false);
   document.getElementById('writeoffSite').innerHTML = `<option value="warehouse">المخزن المركزي</option>` + siteOptions(false);
+  document.getElementById('statusChangeLocation').innerHTML = `<option value="warehouse">المخزن المركزي</option>` + siteOptions(false);
 }
 
-async function renderSitesList() {
+function renderSitesList() {
   let html = '';
   for (const site of sitesCache) {
-    const stock = await DB.getSiteStock(site.id);
+    const stock = siteStockCache[site.id] || [];
+    const totalQty = siteTotalsCache[site.id] || 0;
     const value = stock.reduce((sum, s) => {
       const cat = categoriesCache.find(c => c.code === s.categoryCode);
-      return sum + (s.qty || 0) * (cat ? cat.avgCost || 0 : 0);
+      return sum + (s.total || 0) * (cat ? cat.avgCost || 0 : 0);
     }, 0);
     html += `<div class="card" style="background:#fafbfc;">
       <h2>${site.name} — المشرف: ${site.supervisorName || 'غير محدد'}</h2>
-      <table><thead><tr><th>الصنف</th><th>الكمية</th></tr></thead><tbody>
-        ${stock.map(s => {
+      <div class="stat-row">
+        <div class="stat-box"><div class="value">${totalQty}</div><div class="label">إجمالي القطع بالموقع</div></div>
+        <div class="stat-box"><div class="value">${value.toLocaleString()}</div><div class="label">قيمة عدة الموقع</div></div>
+      </div>
+      <table><thead><tr><th>الصنف</th><th>تعمل</th><th>تالفة</th><th>تحت الصيانة</th><th>معطلة</th><th>الإجمالي</th></tr></thead><tbody>
+        ${stock.filter(s => s.total > 0).map(s => {
           const cat = categoriesCache.find(c => c.code === s.categoryCode);
-          return `<tr><td>${cat ? cat.name : s.categoryCode}</td><td>${s.qty}</td></tr>`;
-        }).join('') || '<tr><td colspan="2">لا يوجد رصيد</td></tr>'}
+          return `<tr><td>${cat ? cat.name : s.categoryCode}</td><td>${s.working}</td><td>${s.damaged}</td><td>${s.maintenance}</td><td>${s.outOfService}</td><td><strong>${s.total}</strong></td></tr>`;
+        }).join('') || '<tr><td colspan="6">لا يوجد رصيد</td></tr>'}
       </tbody></table>
-      <p style="margin-top:8px; font-weight:bold;">قيمة عدة الموقع: ${value.toLocaleString()}</p>
     </div>`;
   }
   document.getElementById('sitesList').innerHTML = html || '<p>لا توجد مواقع مسجلة</p>';
@@ -157,11 +192,12 @@ async function handlePurchase() {
   const qty = Number(document.getElementById('purchaseQty').value);
   const unitCost = Number(document.getElementById('purchaseCost').value);
   const isOpeningBalance = document.getElementById('purchaseIsOpening').checked;
+  const status = document.getElementById('purchaseStatus').value;
   const notes = document.getElementById('purchaseNotes').value.trim();
   const msg = document.getElementById('purchaseMsg');
   if (!categoryCode || !qty || qty <= 0) { msg.innerHTML = '<div class="error-msg">تأكد من الصنف والكمية</div>'; return; }
   try {
-    await DB.recordPurchase({ categoryCode, qty, unitCost: unitCost || 0, isOpeningBalance, notes, createdBy: currentUser.id });
+    await DB.recordPurchase({ categoryCode, qty, unitCost: unitCost || 0, isOpeningBalance, notes, status, createdBy: currentUser.id });
     msg.innerHTML = '<div class="success-msg">تم التسجيل بنجاح</div>';
     document.getElementById('purchaseQty').value = '';
     document.getElementById('purchaseCost').value = '';
@@ -175,10 +211,11 @@ async function handleIssue() {
   const categoryCode = document.getElementById('issueCategory').value;
   const qty = Number(document.getElementById('issueQty').value);
   const siteId = document.getElementById('issueSite').value;
+  const status = document.getElementById('issueStatus').value;
   const notes = document.getElementById('issueNotes').value.trim();
   if (!qty || qty <= 0) return alert('أدخل كمية صحيحة');
   try {
-    await DB.recordIssue({ categoryCode, qty, siteId, notes, createdBy: currentUser.id });
+    await DB.recordIssue({ categoryCode, qty, siteId, status, notes, createdBy: currentUser.id });
     alert('تم الصرف بنجاح');
     document.getElementById('issueQty').value = '';
     await refreshAll();
@@ -190,10 +227,11 @@ async function handleReturn() {
   const categoryCode = document.getElementById('returnCategory').value;
   const qty = Number(document.getElementById('returnQty').value);
   const siteId = document.getElementById('returnSite').value;
+  const status = document.getElementById('returnStatus').value;
   const notes = document.getElementById('returnNotes').value.trim();
   if (!qty || qty <= 0) return alert('أدخل كمية صحيحة');
   try {
-    await DB.recordReturn({ categoryCode, qty, siteId, notes, createdBy: currentUser.id });
+    await DB.recordReturn({ categoryCode, qty, siteId, status, notes, createdBy: currentUser.id });
     alert('تم الإرجاع بنجاح');
     document.getElementById('returnQty').value = '';
     await refreshAll();
@@ -206,10 +244,11 @@ async function handleTransfer() {
   const qty = Number(document.getElementById('transferQty').value);
   const fromSiteId = document.getElementById('transferFrom').value;
   const toSiteId = document.getElementById('transferTo').value;
+  const status = document.getElementById('transferStatus').value;
   if (!qty || qty <= 0) return alert('أدخل كمية صحيحة');
   if (fromSiteId === toSiteId) return alert('اختر موقعين مختلفين');
   try {
-    await DB.recordTransfer({ categoryCode, qty, fromSiteId, toSiteId, createdBy: currentUser.id });
+    await DB.recordTransfer({ categoryCode, qty, fromSiteId, toSiteId, status, createdBy: currentUser.id });
     alert('تم التحويل بنجاح');
     document.getElementById('transferQty').value = '';
     await refreshAll();
@@ -221,13 +260,31 @@ async function handleWriteoff() {
   const categoryCode = document.getElementById('writeoffCategory').value;
   const qty = Number(document.getElementById('writeoffQty').value);
   const siteId = document.getElementById('writeoffSite').value;
+  const status = document.getElementById('writeoffStatus').value;
   const reason = document.getElementById('writeoffReason').value;
   if (!qty || qty <= 0) return alert('أدخل كمية صحيحة');
   if (!confirm('تأكيد تسجيل إتلاف/فقد؟ هذا الإجراء يقلل الرصيد نهائيًا')) return;
   try {
-    await DB.recordWriteoff({ categoryCode, qty, siteId, reason, createdBy: currentUser.id });
+    await DB.recordWriteoff({ categoryCode, qty, siteId, status, reason, createdBy: currentUser.id });
     alert('تم التسجيل');
     document.getElementById('writeoffQty').value = '';
+    await refreshAll();
+  } catch (e) { alert(e.message); }
+}
+
+// ---------- تغيير الحالة ----------
+async function handleStatusChange() {
+  const categoryCode = document.getElementById('statusChangeCategory').value;
+  const qty = Number(document.getElementById('statusChangeQty').value);
+  const location = document.getElementById('statusChangeLocation').value;
+  const fromStatus = document.getElementById('statusChangeFrom').value;
+  const toStatus = document.getElementById('statusChangeTo').value;
+  const notes = document.getElementById('statusChangeNotes').value.trim();
+  if (!qty || qty <= 0) return alert('أدخل كمية صحيحة');
+  try {
+    await DB.recordStatusChange({ categoryCode, qty, location, fromStatus, toStatus, notes, createdBy: currentUser.id });
+    alert('تم تسجيل تغيير الحالة');
+    document.getElementById('statusChangeQty').value = '';
     await refreshAll();
   } catch (e) { alert(e.message); }
 }
@@ -252,6 +309,12 @@ async function loadAggregateAndSiteReports() {
   const writeoffData = await Reports.getWriteoffReport();
   document.getElementById('writeoffReport').innerHTML = Reports.renderWriteoffHtml(writeoffData);
 
+  const statusTotals = await Reports.getStatusSummary(sitesCache, categoriesCache);
+  document.getElementById('statusSummaryReport').innerHTML = Reports.renderStatusSummaryHtml(statusTotals);
+
+  const statusRows = await Reports.getStatusDetailRows(sitesCache, categoriesCache);
+  document.getElementById('statusDetailReport').innerHTML = Reports.renderStatusDetailHtml(statusRows);
+
   document.getElementById('historyCategory').innerHTML = categoryOptions();
 }
 
@@ -263,3 +326,15 @@ async function handleCategoryHistory() {
 }
 
 document.querySelector('[data-tab="reports"]').addEventListener('click', loadAggregateAndSiteReports);
+
+// ---------- تصدير PDF عبر طباعة المتصفح ----------
+function printReport(title, sourceElementId) {
+  const content = document.getElementById(sourceElementId).innerHTML;
+  const dateStr = new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+  document.getElementById('printSection').innerHTML = `
+    <h2>${title}</h2>
+    <div class="print-date">تاريخ التقرير: ${dateStr}</div>
+    ${content}
+  `;
+  window.print();
+}

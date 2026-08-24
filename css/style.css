@@ -73,3 +73,14 @@ tr:hover { background: #fafbfc; }
 @media (max-width: 600px) {
   .form-grid { grid-template-columns: 1fr; }
 }
+
+/* الطباعة / تصدير PDF */
+#printSection { display: none; }
+@media print {
+  body * { visibility: hidden; }
+  #printSection, #printSection * { visibility: visible; }
+  #printSection { display: block; position: absolute; top: 0; right: 0; width: 100%; padding: 20px; }
+  #printSection h2 { margin-bottom: 4px; }
+  #printSection .print-date { color: #666; font-size: 13px; margin-bottom: 16px; }
+}
+.print-btn { width: auto; display: inline-block; padding: 6px 14px; font-size: 13px; margin-right: 8px; background: #2b7cb0; }

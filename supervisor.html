@@ -16,9 +16,9 @@
 <div class="container">
 
   <div class="card">
-    <h2>رصيد العدة الحالي بالموقع</h2>
+    <h2>رصيد العدة الحالي بالموقع (حسب الحالة)</h2>
     <table>
-      <thead><tr><th>الصنف</th><th>الكمية</th></tr></thead>
+      <thead><tr><th>الصنف</th><th>تعمل</th><th>تالفة</th><th>تحت الصيانة</th><th>معطلة</th><th>الإجمالي</th></tr></thead>
       <tbody id="stockTable"></tbody>
     </table>
   </div>
@@ -28,6 +28,7 @@
     <div class="form-grid">
       <select id="issueCategory"></select>
       <input id="issueQty" type="number" placeholder="الكمية">
+      <select id="issueStatus"></select>
       <input id="issueNotes" class="full" placeholder="ملاحظات">
     </div>
     <button onclick="handleIssueToMe()">تسجيل الاستلام</button>
@@ -38,6 +39,7 @@
     <div class="form-grid">
       <select id="returnCategory"></select>
       <input id="returnQty" type="number" placeholder="الكمية">
+      <select id="returnStatus"></select>
       <input id="returnNotes" class="full" placeholder="ملاحظات">
     </div>
     <button onclick="handleReturnFromMe()">تسجيل الإرجاع</button>
@@ -49,6 +51,7 @@
       <select id="transferCategory"></select>
       <input id="transferQty" type="number" placeholder="الكمية">
       <select id="transferTo"></select>
+      <select id="transferStatus"></select>
     </div>
     <button onclick="handleTransferFromMe()">تحويل</button>
   </div>
@@ -58,12 +61,24 @@
     <div class="form-grid">
       <select id="writeoffCategory"></select>
       <input id="writeoffQty" type="number" placeholder="الكمية">
+      <select id="writeoffStatus"></select>
       <select id="writeoffReason">
         <option value="تلف">تلف</option>
         <option value="فقد">فقد</option>
       </select>
     </div>
     <button onclick="handleWriteoffFromMe()" class="danger">تسجيل</button>
+  </div>
+
+  <div class="card">
+    <h2>تغيير حالة عدة داخل الموقع</h2>
+    <div class="form-grid">
+      <select id="statusChangeCategory"></select>
+      <input id="statusChangeQty" type="number" placeholder="الكمية">
+      <select id="statusChangeFrom"></select>
+      <select id="statusChangeTo"></select>
+    </div>
+    <button onclick="handleStatusChangeAtMySite()">تسجيل تغيير الحالة</button>
   </div>
 
   <div class="card">
