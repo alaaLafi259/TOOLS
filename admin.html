@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة المشرف العام</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <h1>لوحة المشرف العام - إدارة عدة المواقع</h1>
+  <button onclick="logoutUser()" class="danger">خروج</button>
+</header>
+
+<div class="container">
+
+  <div class="stat-row" id="statsRow"></div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="categories">الأصناف</button>
+    <button class="tab-btn" data-tab="sites">المواقع</button>
+    <button class="tab-btn" data-tab="purchase">شراء / رصيد افتتاحي</button>
+    <button class="tab-btn" data-tab="movement">صرف / إرجاع / تحويل / إتلاف</button>
+    <button class="tab-btn" data-tab="reports">التقارير والتكاليف</button>
+    <button class="tab-btn" data-tab="log">سجل الحركات</button>
+  </div>
+
+  <!-- الأصناف -->
+  <div class="tab-content active" id="tab-categories">
+    <div class="card">
+      <h2>إضافة صنف جديد</h2>
+      <div class="form-grid">
+        <input id="catCode" placeholder="كود الصنف (مثال: HLT-01)">
+        <input id="catName" placeholder="اسم الصنف (مثال: هيلتي دقاق)">
+        <input id="catUnit" placeholder="وحدة القياس (اختياري - قطعة)">
+        <div></div>
+      </div>
+      <button onclick="handleAddCategory()">إضافة الصنف</button>
+      <div id="catMsg"></div>
+    </div>
+    <div class="card">
+      <h2>الأصناف المسجلة</h2>
+      <table>
+        <thead><tr><th>الكود</th><th>الاسم</th><th>رصيد المخزن المركزي</th><th>متوسط التكلفة</th></tr></thead>
+        <tbody id="categoriesTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- المواقع -->
+  <div class="tab-content" id="tab-sites">
+    <div class="card">
+      <h2>إضافة موقع جديد</h2>
+      <div class="form-grid">
+        <input id="siteName" placeholder="اسم الموقع">
+        <input id="siteSupervisorName" placeholder="اسم المشرف">
+        <input id="siteSupervisorUid" class="full" placeholder="UID حساب المشرف في Firebase Auth (أنشئه من Authentication في الكونسول ثم الصقه هنا)">
+      </div>
+      <button onclick="handleAddSite()">إضافة الموقع</button>
+      <div id="siteMsg"></div>
+    </div>
+    <div class="card">
+      <h2>المواقع المسجلة وأرصدتها</h2>
+      <div id="sitesList"></div>
+    </div>
+  </div>
+
+  <!-- شراء / رصيد افتتاحي -->
+  <div class="tab-content" id="tab-purchase">
+    <div class="card">
+      <h2>تسجيل شراء جديد أو رصيد افتتاحي لعدة قديمة</h2>
+      <div class="form-grid">
+        <select id="purchaseCategory"></select>
+        <input id="purchaseQty" type="number" placeholder="الكمية">
+        <input id="purchaseCost" type="number" placeholder="تكلفة القطعة الواحدة">
+        <label class="full"><input type="checkbox" id="purchaseIsOpening" style="width:auto; display:inline-block; margin-left:6px;"> هذه عدة قديمة موجودة بالفعل (رصيد افتتاحي وليس شراء جديد)</label>
+        <textarea id="purchaseNotes" class="full" placeholder="ملاحظات (اختياري)"></textarea>
+      </div>
+      <button onclick="handlePurchase()">تسجيل</button>
+      <div id="purchaseMsg"></div>
+    </div>
+  </div>
+
+  <!-- الحركات -->
+  <div class="tab-content" id="tab-movement">
+    <div class="card">
+      <h2>صرف من المخزن المركزي لموقع</h2>
+      <div class="form-grid">
+        <select id="issueCategory"></select>
+        <input id="issueQty" type="number" placeholder="الكمية">
+        <select id="issueSite"></select>
+        <input id="issueNotes" placeholder="ملاحظات">
+      </div>
+      <button onclick="handleIssue()">صرف</button>
+    </div>
+    <div class="card">
+      <h2>إرجاع من موقع للمخزن المركزي</h2>
+      <div class="form-grid">
+        <select id="returnCategory"></select>
+        <input id="returnQty" type="number" placeholder="الكمية">
+        <select id="returnSite"></select>
+        <input id="returnNotes" placeholder="ملاحظات">
+      </div>
+      <button onclick="handleReturn()">إرجاع</button>
+    </div>
+    <div class="card">
+      <h2>تحويل مباشر بين موقعين</h2>
+      <div class="form-grid">
+        <select id="transferCategory"></select>
+        <input id="transferQty" type="number" placeholder="الكمية">
+        <select id="transferFrom"></select>
+        <select id="transferTo"></select>
+      </div>
+      <button onclick="handleTransfer()">تحويل</button>
+    </div>
+    <div class="card">
+      <h2>تسجيل إتلاف / فقد</h2>
+      <div class="form-grid">
+        <select id="writeoffCategory"></select>
+        <input id="writeoffQty" type="number" placeholder="الكمية">
+        <select id="writeoffSite"><option value="warehouse">المخزن المركزي</option></select>
+        <select id="writeoffReason">
+          <option value="تلف">تلف</option>
+          <option value="فقد">فقد</option>
+        </select>
+      </div>
+      <button onclick="handleWriteoff()" class="danger">تسجيل الإتلاف/الفقد</button>
+    </div>
+  </div>
+
+  <!-- التقارير -->
+  <div class="tab-content" id="tab-reports">
+    <div class="card">
+      <h2>تكلفة المشتريات الشهرية</h2>
+      <div class="form-grid">
+        <input type="month" id="reportMonth">
+      </div>
+      <button onclick="handleMonthlyReport()">عرض</button>
+      <div id="monthlyReportResult"></div>
+    </div>
+    <div class="card">
+      <h2>التكلفة المجمعة (إجمالية)</h2>
+      <div id="aggregateReport"></div>
+    </div>
+    <div class="card">
+      <h2>قيمة العدة لكل موقع</h2>
+      <div id="siteCostReport"></div>
+    </div>
+    <div class="card">
+      <h2>مصفوفة توزيع العدة (كل صنف × كل موقع)</h2>
+      <div id="stockMatrixReport" style="overflow-x:auto;"></div>
+    </div>
+    <div class="card">
+      <h2>تقرير الإتلاف والفقد</h2>
+      <div id="writeoffReport"></div>
+    </div>
+    <div class="card">
+      <h2>سجل حركة صنف معين</h2>
+      <div class="form-grid">
+        <select id="historyCategory"></select>
+        <div></div>
+      </div>
+      <button onclick="handleCategoryHistory()">عرض السجل</button>
+      <div id="categoryHistoryResult"></div>
+    </div>
+  </div>
+
+  <!-- سجل الحركات -->
+  <div class="tab-content" id="tab-log">
+    <div class="card">
+      <h2>آخر الحركات</h2>
+      <table>
+        <thead><tr><th>التاريخ</th><th>النوع</th><th>الصنف</th><th>الكمية</th><th>من</th><th>إلى</th><th>التكلفة</th></tr></thead>
+        <tbody id="logTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/reports.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>

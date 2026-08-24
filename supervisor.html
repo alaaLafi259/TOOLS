@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة مشرف الموقع</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <h1 id="siteTitle">لوحة مشرف الموقع</h1>
+  <button onclick="logoutUser()" class="danger">خروج</button>
+</header>
+
+<div class="container">
+
+  <div class="card">
+    <h2>رصيد العدة الحالي بالموقع</h2>
+    <table>
+      <thead><tr><th>الصنف</th><th>الكمية</th></tr></thead>
+      <tbody id="stockTable"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>طلب/استلام عدة من المخزن المركزي</h2>
+    <div class="form-grid">
+      <select id="issueCategory"></select>
+      <input id="issueQty" type="number" placeholder="الكمية">
+      <input id="issueNotes" class="full" placeholder="ملاحظات">
+    </div>
+    <button onclick="handleIssueToMe()">تسجيل الاستلام</button>
+  </div>
+
+  <div class="card">
+    <h2>إرجاع عدة للمخزن المركزي</h2>
+    <div class="form-grid">
+      <select id="returnCategory"></select>
+      <input id="returnQty" type="number" placeholder="الكمية">
+      <input id="returnNotes" class="full" placeholder="ملاحظات">
+    </div>
+    <button onclick="handleReturnFromMe()">تسجيل الإرجاع</button>
+  </div>
+
+  <div class="card">
+    <h2>تحويل عدة لموقع آخر</h2>
+    <div class="form-grid">
+      <select id="transferCategory"></select>
+      <input id="transferQty" type="number" placeholder="الكمية">
+      <select id="transferTo"></select>
+    </div>
+    <button onclick="handleTransferFromMe()">تحويل</button>
+  </div>
+
+  <div class="card">
+    <h2>تسجيل إتلاف / فقد</h2>
+    <div class="form-grid">
+      <select id="writeoffCategory"></select>
+      <input id="writeoffQty" type="number" placeholder="الكمية">
+      <select id="writeoffReason">
+        <option value="تلف">تلف</option>
+        <option value="فقد">فقد</option>
+      </select>
+    </div>
+    <button onclick="handleWriteoffFromMe()" class="danger">تسجيل</button>
+  </div>
+
+  <div class="card">
+    <h2>آخر حركات موقعي</h2>
+    <table>
+      <thead><tr><th>التاريخ</th><th>النوع</th><th>الصنف</th><th>الكمية</th></tr></thead>
+      <tbody id="myLogTable"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/supervisor.js"></script>
+</body>
+</html>

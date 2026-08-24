@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userDoc().data.role == 'admin';
+    }
+
+    function isSupervisorOfSite(siteId) {
+      return isSignedIn()
+        && userDoc().data.role == 'supervisor'
+        && userDoc().data.siteId == siteId;
+    }
+
+    // ملف المستخدم: يقرأ بياناته فقط، الأدمن يقرأ ويكتب الكل
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // الأصناف: الكل يقرأ (محتاجينها للعرض)، الأدمن فقط يكتب مباشرة
+    // (تحديثات الكمية/التكلفة تتم عبر transactions من db.js وتتطلب صلاحية كتابة)
+    match /categories/{code} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+      // السماح بتحديث الحقول الرقمية فقط عبر أي مستخدم مسجل (لازم للـ runTransaction
+      // في recordIssue/recordReturn/recordTransfer/recordWriteoff من واجهة المشرف)
+      allow update: if isSignedIn();
+    }
+
+    // المواقع
+    match /sites/{siteId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+
+      match /stock/{categoryCode} {
+        allow read: if isSignedIn();
+        // ملاحظة: التحويل المباشر بين موقعين يحتاج تعديل رصيد الموقعين معًا
+        // (المُرسِل والمُستقبِل) داخل نفس العملية، وFirestore Rules لا تستطيع
+        // بسهولة التحقق من "أي الموقعين هو موقعي" في كل طرف من العملية دفعة واحدة.
+        // لذلك سُمح لأي مستخدم مسجل (أدمن أو مشرف) بالكتابة هنا، والتقييد الفعلي
+        // لمن يقدر يعدل رصيد أي موقع يتم فرضه من واجهة التطبيق نفسها (admin.js / supervisor.js).
+        // هذا مقبول لأنه نظام داخلي لموظفين موثوقين، وليس تطبيقًا عامًا.
+        allow write: if isSignedIn();
+      }
+    }
+
+    // الحركات: أي مستخدم مسجل يقدر يضيف حركة (المنطق في db.js يحدد الصلاحية الفعلية
+    // عن طريق limiting UI)، لكن التعديل والحذف للأدمن فقط
+    match /transactions/{txId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+  }
+}

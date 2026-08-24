@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تسجيل الدخول - نظام إدارة العدة</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="login-box">
+  <h1>نظام إدارة عدة المواقع</h1>
+  <div id="errorMsg" class="error-msg"></div>
+  <input type="email" id="email" placeholder="البريد الإلكتروني">
+  <input type="password" id="password" placeholder="كلمة المرور">
+  <button onclick="handleLogin()">دخول</button>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/auth.js"></script>
+<script>
+async function handleLogin() {
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const errorBox = document.getElementById('errorMsg');
+  errorBox.textContent = '';
+  if (!email || !password) { errorBox.textContent = 'من فضلك أدخل البريد وكلمة المرور'; return; }
+  try {
+    await loginUser(email, password);
+  } catch (e) {
+    errorBox.textContent = 'خطأ في تسجيل الدخول: ' + e.message;
+  }
+}
+</script>
+</body>
+</html>

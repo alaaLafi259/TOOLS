@@ -1,0 +1,75 @@
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Tahoma', 'Segoe UI', sans-serif; }
+html, body { direction: rtl; background: #f4f6f8; color: #222; }
+
+.container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+/* شاشة الدخول */
+.login-box {
+  max-width: 380px; margin: 80px auto; background: #fff; padding: 32px;
+  border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+.login-box h1 { text-align: center; margin-bottom: 24px; font-size: 20px; color: #1a3c5e; }
+
+input, select, button, textarea {
+  width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid #ccc;
+  border-radius: 6px; font-size: 14px;
+}
+button {
+  background: #1a3c5e; color: #fff; border: none; cursor: pointer; font-weight: bold;
+  transition: 0.2s;
+}
+button:hover { background: #0f2a42; }
+button.secondary { background: #6c757d; }
+button.danger { background: #b93a3a; }
+
+.error-msg { color: #b93a3a; font-size: 13px; margin-bottom: 10px; }
+.success-msg { color: #1f8a3d; font-size: 13px; margin-bottom: 10px; }
+
+/* الهيدر */
+header {
+  background: #1a3c5e; color: #fff; padding: 16px 24px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+header h1 { font-size: 18px; }
+header button { width: auto; padding: 8px 16px; }
+
+/* التبويبات */
+.tabs { display: flex; gap: 8px; margin: 20px 0; border-bottom: 2px solid #ddd; flex-wrap: wrap; }
+.tab-btn {
+  background: none; color: #444; border: none; padding: 10px 16px;
+  border-bottom: 3px solid transparent; width: auto; font-weight: normal;
+}
+.tab-btn.active { border-bottom-color: #1a3c5e; color: #1a3c5e; font-weight: bold; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* بطاقات وجداول */
+.card { background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+.card h2 { font-size: 16px; margin-bottom: 14px; color: #1a3c5e; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid #eee; }
+th { background: #f0f2f5; color: #333; }
+tr:hover { background: #fafbfc; }
+
+.stat-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.stat-box {
+  flex: 1; min-width: 160px; background: #fff; border-radius: 10px; padding: 18px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05); text-align: center;
+}
+.stat-box .value { font-size: 24px; font-weight: bold; color: #1a3c5e; }
+.stat-box .label { font-size: 13px; color: #777; margin-top: 4px; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.form-grid .full { grid-column: 1 / -1; }
+
+.badge { padding: 2px 8px; border-radius: 12px; font-size: 12px; color: #fff; }
+.badge.purchase, .badge.opening { background: #1f8a3d; }
+.badge.issue { background: #d98c1f; }
+.badge.return { background: #2b7cb0; }
+.badge.transfer { background: #6c5ce7; }
+.badge.writeoff { background: #b93a3a; }
+
+@media (max-width: 600px) {
+  .form-grid { grid-template-columns: 1fr; }
+}
