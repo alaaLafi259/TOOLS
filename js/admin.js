@@ -61,13 +61,56 @@ function renderStats() {
 function renderCategoriesTable() {
   document.getElementById('categoriesTable').innerHTML = categoriesCache.map(c => {
     const ws = c.warehouseStock || { working: 0, damaged: 0, maintenance: 0, outOfService: 0 };
-    return `<tr>
-      <td>${c.code}</td><td>${c.name}</td>
+    return `<tr id="catRow-${c.code}">
+      <td>${c.code}</td>
+      <td>
+        <span id="catNameDisplay-${c.code}">${c.name}</span>
+        <input id="catNameEdit-${c.code}" value="${c.name}" style="display:none; margin:0;">
+      </td>
       <td>${ws.working}</td><td>${ws.damaged}</td><td>${ws.maintenance}</td><td>${ws.outOfService}</td>
       <td><strong>${c.totalQtyWarehouse || 0}</strong></td>
       <td>${(c.avgCost || 0).toFixed(2)}</td>
+      <td>
+        <button class="action-btn secondary" id="catEditBtn-${c.code}" onclick="toggleEditCategory('${c.code}')">تعديل</button>
+        <button class="action-btn" id="catSaveBtn-${c.code}" style="display:none;" onclick="saveCategory('${c.code}')">حفظ</button>
+        <button class="action-btn danger" onclick="handleDeleteCategory('${c.code}')">حذف</button>
+      </td>
     </tr>`;
   }).join('');
+}
+
+function toggleEditCategory(code) {
+  document.getElementById(`catNameDisplay-${code}`).style.display = 'none';
+  document.getElementById(`catNameEdit-${code}`).style.display = 'block';
+  document.getElementById(`catEditBtn-${code}`).style.display = 'none';
+  document.getElementById(`catSaveBtn-${code}`).style.display = 'inline-block';
+}
+
+async function saveCategory(code) {
+  const newName = document.getElementById(`catNameEdit-${code}`).value.trim();
+  if (!newName) return alert('الاسم لا يمكن أن يكون فارغًا');
+  try {
+    await DB.updateCategory(code, { name: newName, unit: categoriesCache.find(c => c.code === code)?.unit || 'قطعة' });
+    await refreshAll();
+  } catch (e) { alert(e.message); }
+}
+
+async function handleDeleteCategory(code) {
+  const cat = categoriesCache.find(c => c.code === code);
+  const warehouseTotal = cat ? cat.totalQtyWarehouse || 0 : 0;
+  let sitesTotal = 0;
+  sitesCache.forEach(site => {
+    (siteStockCache[site.id] || []).forEach(s => { if (s.categoryCode === code) sitesTotal += s.total || 0; });
+  });
+  if (warehouseTotal > 0 || sitesTotal > 0) {
+    alert(`لا يمكن حذف هذا الصنف لأن له رصيد حاليًا (${warehouseTotal + sitesTotal} قطعة في المخزن/المواقع). صفّر الرصيد أولاً أو استخدم زر "تعديل" لتصحيح الاسم فقط.`);
+    return;
+  }
+  if (!confirm(`تأكيد حذف الصنف "${cat ? cat.name : code}"؟ هذا الإجراء نهائي.`)) return;
+  try {
+    await DB.deleteCategory(code);
+    await refreshAll();
+  } catch (e) { alert(e.message); }
 }
 
 function statusOptions() {

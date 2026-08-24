@@ -65,6 +65,17 @@ const DB = {
     });
   },
 
+  // تعديل اسم/وحدة الصنف (الكود لا يمكن تعديله لأنه معرف المستند)
+  async updateCategory(code, { name, unit }) {
+    await db.collection('categories').doc(code).update({ name, unit });
+  },
+
+  // حذف صنف نهائيًا - يُستخدم فقط لتصحيح خطأ إدخال، والتحقق من عدم وجود رصيد
+  // أو حركات يتم في واجهة الأدمن قبل النداء على هذه الدالة
+  async deleteCategory(code) {
+    await db.collection('categories').doc(code).delete();
+  },
+
   // ---------- المواقع (sites) ----------
   async getAllSites() {
     const snap = await db.collection('sites').orderBy('name').get();
